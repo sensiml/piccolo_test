@@ -1,0 +1,140 @@
+name: Main Check
+run-name: ${{ github.actor }} made changes 
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    container:
+      image: node:16-alpine3.15
+    outputs:
+      # ui: ${{ steps.filter.outputs.ui }}
+      # server: ${{ steps.filter.outputs.server }}
+      # python_client: ${{ steps.filter.outputs.python_client }}
+      # func_tests: ${{ steps.filter.outputs.func_tests }}
+      # black_formating: ${{ steps.filter.outputs.black_formating }}
+      # embedded_ml_sdk: ${{ steps.filter.outputs.embedded_ml_sdk }}
+      ui: 'false'
+      server: 'true'
+      python_client: 'false'
+      func_tests: 'false'
+      black_formating: 'false'
+      server_unit_tests: 'false'
+      embedded_ml_sdk: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check diff
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          base: 'main'
+          filters: |
+            ui:
+              - 'src/ui/**'
+            server:
+              - 'src/server/**'
+            python_client:
+              - 'src/python_client/**'
+            func_tests:
+              - 'func_tests/**'
+            embedded_ml_sdk:
+              - 'src/embedded_ml_sdk/**'
+      - name: Set black formating
+        run: echo ''
+        outputs:
+          black_formating: ${{ steps.filter.outputs.server == 'true' || steps.filter.outputs.python_client == 'true' || steps.filter.outputs.func_tests == 'true' }}
+          server_unit_tests: ${{ steps.filter.outputs.server == 'true' || steps.filter.outputs.python_client == 'true }}
+
+  check-ui:
+    name: Check Formatting UI / UI Unit tests running
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.ui == 'true' }}
+
+    runs-on: ubuntu-latest
+    container:
+      image: node:16-alpine3.15
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install node packages
+        run: yarn --cwd src/ui install
+      - name: Run Eslint
+        run: yarn --cwd src/ui eslint
+      - name: Run Unit Tests
+        run: yarn --cwd src/ui test
+
+  check-black-formating:
+    name: Check Formatting Black
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.black_formating == 'true' }}
+
+    runs-on: ubuntu-latest
+    container:
+      user: sml-app
+      image: sensiml/base
+
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install black==24.4.2
+      
+      - name: Check Formatting Server
+        if: ${{ needs.detect-changes.outputs.server == 'true' }}
+        run: python -m black --check src/server/
+
+      - name: Check Formatting Python Client
+        if: ${{ needs.detect-changes.outputs.python_client == 'true' }}
+        run: python -m black --check src/python_client
+
+      - name: Check Formatting Function Test
+        if: ${{ needs.detect-changes.outputs.func_tests == 'true' }}
+        run: python -m black --check func_tests/
+
+  run-server-unit-tests:
+    name: "Run Server Unit Test"
+    needs:
+      - detect-changes
+    if: ${{ needs.detect-changes.outputs.server_unit_tests == 'true' }}
+
+    runs-on: ubuntu-latest
+    container:
+      user: sml-app
+      image: sensiml/base
+    services:
+      db:
+        image: postgres
+        env:
+          POSTGRES_DB: piccolodb
+          POSTGRES_USER: piccoloadmin
+          POSTGRES_PASSWORD: piccoloadmin3
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          export DJANGO_ENV=docker
+          export DJANGO_ENV_PATH=${{github.workspace}}/src/server/config/env/
+          py.test  --durations=0 --junitxml=report_out.xml --html=unittest_report.html --cov=./ --cov-report html:cov_html -n 6
+
+  run-embedded-ml-unit-tests:
+    name: "Run Embedded ML Unit Test"
+    needs:
+      - detect-changes
+    if: ${{ needs.detect-changes.outputs.embedded_ml_sdk == 'true' }}
+
+    runs-on: ubuntu-latest
+    container:
+      image: sensiml/base
+    steps:
+      - run: |
+          yes Y | apt install libgtest-dev build-essential cmake
+          cd /usr/src/googletest && cmake .
+          cmake --build . --target install
+      - run: |
+          cd src/embedded_ml_sdk/utest
+          ls -lh
+          sudo bash build.sh
+
