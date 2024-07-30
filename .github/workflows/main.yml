@@ -8,8 +8,6 @@ on:
 jobs:
   detect-changes:
     runs-on: ubuntu-latest
-    container:
-      image: node:16-alpine3.15
     outputs:
       # ui: ${{ steps.filter.outputs.ui }}
       # server: ${{ steps.filter.outputs.server }}
@@ -17,8 +15,10 @@ jobs:
       # func_tests: ${{ steps.filter.outputs.func_tests }}
       # black_formating: ${{ steps.filter.outputs.black_formating }}
       # embedded_ml_sdk: ${{ steps.filter.outputs.embedded_ml_sdk }}
-      ui: 'false'
-      server: 'true'
+      # black_formating: ${{ steps.filter.outputs.server == 'true' || steps.filter.outputs.python_client == 'true' || steps.filter.outputs.func_tests == 'true' }}
+      # server_unit_tests: ${{ steps.filter.outputs.server == 'true' || steps.filter.outputs.python_client == 'true }}
+      ui: 'true'
+      server: 'false'
       python_client: 'false'
       func_tests: 'false'
       black_formating: 'false'
@@ -42,12 +42,6 @@ jobs:
               - 'func_tests/**'
             embedded_ml_sdk:
               - 'src/embedded_ml_sdk/**'
-      - name: Set black formating
-        run: echo ''
-        outputs:
-          black_formating: ${{ steps.filter.outputs.server == 'true' || steps.filter.outputs.python_client == 'true' || steps.filter.outputs.func_tests == 'true' }}
-          server_unit_tests: ${{ steps.filter.outputs.server == 'true' || steps.filter.outputs.python_client == 'true }}
-
   check-ui:
     name: Check Formatting UI / UI Unit tests running
     needs: detect-changes
